@@ -11,7 +11,7 @@ buildDockerImage {
     imageName = 'builder'
     flatten = true
     noPublish = true
-    buildParameters = "--build-arg RELEASE=${iteration} -v \$PWD:/output ${destination}"
+    buildParameters = "--build-arg RELEASE=${iteration} -v \$PWD:/output ."
     stash = [includes:"rpms/*.rpm"]
 }
 
