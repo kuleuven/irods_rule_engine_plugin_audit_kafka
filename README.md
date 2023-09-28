@@ -1,6 +1,6 @@
-# iRODS Rule Engine Plugin - Audit via AMQP 1.0
+# iRODS Rule Engine Plugin - Audit via Kafka
 
-This C++ plugin provides the iRODS platform a rule engine that can emit a single AMQP 1.0 message to the configured topic for every policy enforcement point (PEP) encountered by the iRODS server.
+This C++ plugin provides the iRODS platform a rule engine that can emit a single kafka message to the configured topic for every policy enforcement point (PEP) encountered by the iRODS server.
 
 # Build
 
