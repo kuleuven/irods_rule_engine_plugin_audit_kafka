@@ -6,6 +6,8 @@ properties([
 
 def iteration = env.BUILD_NUMBER
 
+
+
 buildDockerImage {
     namespace = 'coz'
     imageName = 'builder'
@@ -20,7 +22,7 @@ node() {
     deleteDir()
     stage("unstash") {
         dir("unstash") {
-            sh("rm -rf")
+            sh("rm -rf rpms unstash")
             unstash "buildDockerImage"
         }
     }
@@ -28,6 +30,6 @@ node() {
     stage(name: 'upload rpm') {
         rpmfile = findFiles(glob: 'unstash/rpms/x86_64/*.rpm')
         echo "${rpmfile}"
-        rpm.upload_rpms(files: rpmfile, repository: "kul-hpc8")
+        rpm.upload_rpms(files: rpmfile, repository: "icts-p-coz-rpm-local/8")
     }
 }
