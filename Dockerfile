@@ -29,6 +29,6 @@ RUN mkdir build && cd build && \
 
 RUN mkdir -p /output/rpms
 
-RUN cp /work/build/*.rpm /output/rpms
-#RUN rpmrebuild -p --release=${RELEASE} --directory /output/rpms /work/build/*.rpm
+#RUN cp /work/build/*.rpm /output/rpms
+RUN rpmrebuild -p --release=${RELEASE} --directory /output/rpms /work/build/*.rpm
 #RUN rpmrebuild -p --change-spec-preamble="sed -e 's/^Version:.*/Version: ${IRODS_VERSION}/'" --release=${RELEASE} --directory /output/rpms /work/build/*.rpm
