@@ -12,7 +12,7 @@ buildDockerImage {
     flatten = true
     noPublish = true
     buildParameters = "--build-arg RELEASE=${iteration} -v \$PWD:/output ."
-    stash = [includes:"rpms/*.rpm"]
+    stash = [includes:"rpms/x86_64/*.rpm"]
 }
 
 node() {        
@@ -26,7 +26,7 @@ node() {
     }
 
     stage(name: 'upload rpm') {
-        rpmfile = findFiles(glob: 'unstash/rpms/*.rpm')
+        rpmfile = findFiles(glob: 'unstash/rpms/x86_64/*.rpm')
         echo "${rpmfile}"
         rpm.upload_rpms(files: rpmfile, repository: "kul-hpc8")
     }
