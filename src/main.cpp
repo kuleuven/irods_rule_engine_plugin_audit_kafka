@@ -121,6 +121,32 @@ namespace irods::plugin::rule_engine::audit_kafka
 		return ERROR(SYS_INVALID_INPUT_PARAM, "failed to find plugin configuration");
 	}
 
+
+	/**
+	 * @brief Message delivery report callback.
+	 *
+	 * This callback is called exactly once per message, indicating if
+	 * the message was succesfully delivered
+	 * (rkmessage->err == RD_KAFKA_RESP_ERR_NO_ERROR) or permanently
+	 * failed delivery (rkmessage->err != RD_KAFKA_RESP_ERR_NO_ERROR).
+	 *
+	 * The callback is triggered from rd_kafka_poll() and executes on
+	 * the application's thread.
+	 */
+	static void dr_msg_cb(rd_kafka_t *rk, const rd_kafka_message_t *rkmessage, void *opaque) {
+		if (rkmessage->err) {
+			// clang-format off
+			log_re::error({
+				{"rule_engine_plugin", rule_engine_name},
+				{"log_message", "Message delivery failed"},
+				{"error_result", rd_kafka_err2str(rkmessage->err)},
+			});
+			// clang-format on
+		}
+
+		/* The rkmessage is destroyed automatically by librdkafka */
+	}
+
 	static auto start([[maybe_unused]] irods::default_re_ctx& _re_ctx, const std::string& _instance_name)
 		-> irods::error
 	{
@@ -147,6 +173,8 @@ namespace irods::plugin::rule_engine::audit_kafka
                     sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 			return ERROR(SYS_INTERNAL_ERR, errstr);
         }
+
+		rd_kafka_conf_set_dr_msg_cb(conf, dr_msg_cb);
 
         rk = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
         if (!rk) {
