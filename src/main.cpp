@@ -342,7 +342,7 @@ namespace irods::plugin::rule_engine::audit_kafka
 			return ERROR(SYS_UNKNOWN_ERROR, "an unknown error occurred");
 		}
 
-		return err;
+		return CODE(RULE_ENGINE_CONTINUE);
 	}
 } // namespace irods::plugin::rule_engine::audit_kafka
 
