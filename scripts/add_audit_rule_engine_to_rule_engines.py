@@ -6,12 +6,11 @@ def main():
     irods_config = IrodsConfig()
     irods_config.server_config['plugin_configuration']['rule_engines'].insert(1,
             {
-                "instance_name": "irods_rule_engine_plugin-audit_amqp-instance",
-                "plugin_name": "irods_rule_engine_plugin-audit_amqp",
+                "instance_name": "irods_rule_engine_plugin-audit_kafka-instance",
+                "plugin_name": "irods_rule_engine_plugin-audit_kafka",
                 "plugin_specific_configuration" : {
-                     "amqp_location" : "ANONYMOUS@localhost:5672",
-                     "amqp_topic" : "audit_messages",
-                     "log_path_prefix": "/tmp/irods",
+                     "kafka_brokers" : "localhost:9092",
+                     "kafka_topic" : "audit_messages",
                      "pep_regex_to_match" : "audit_.*",
                      "test_mode": "true"
                  }

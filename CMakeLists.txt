@@ -10,7 +10,7 @@ set(IRODS_PLUGIN_VERSION "${IRODS_VERSION}.${IRODS_PLUGIN_REVISION}")
 
 set(IRODS_PACKAGE_REVISION "1")
 
-set(PLUGIN irods_rule_engine_plugin-audit_amqp)
+set(PLUGIN irods_rule_engine_plugin-audit_kafka)
 
 include(IrodsCXXCompiler)
 set(CMAKE_CXX_STANDARD ${IRODS_CXX_STANDARD})
@@ -18,16 +18,13 @@ set(CMAKE_MODULE_LINKER_FLAGS_INIT "-Wl,--enable-new-dtags -Wl,--as-needed -Wl,-
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "-Wl,--enable-new-dtags -Wl,--as-needed -Wl,-z,defs")
 set(CMAKE_MODULE_LINKER_FLAGS_RELEASE_INIT "-Wl,--gc-sections -Wl,-z,combreloc")
 set(CMAKE_SHARED_LINKER_FLAGS_RELEASE_INIT "-Wl,--gc-sections -Wl,-z,combreloc")
-include(IrodsRunpathDefaults)
 
 include(IrodsExternals)
-
-IRODS_MACRO_CHECK_DEPENDENCY_SET_FULLPATH_ADD_TO_IRODS_PACKAGE_DEPENDENCIES_LIST(QPID_PROTON qpid-proton0.36.0-1)
 
 string(REPLACE ";" ", " ${PLUGIN}_PACKAGE_DEPENDENCIES_STRING "${IRODS_PACKAGE_DEPENDENCIES_LIST}")
 unset(IRODS_PACKAGE_DEPENDENCIES_LIST)
 
-project(irods_rule_engine_plugin-audit_amqp
+project(irods_rule_engine_plugin-audit_kafka
   VERSION "${IRODS_PLUGIN_VERSION}"
   LANGUAGES CXX)
 
@@ -44,19 +41,17 @@ include(CheckCXXSymbolExists)
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED COMPONENTS Crypto SSL)
-find_package(nlohmann_json "3.6.1" REQUIRED)
+find_package(nlohmann_json "3.10.4" REQUIRED)
 
 add_library(
   ${PLUGIN}
   MODULE
   "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/amqp_sender.cpp"
   )
 set(
   ${PLUGIN}_HEADERS
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/irods/private/audit_amqp.hpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/irods/private/audit_kafka.hpp"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/irods/private/audit_b64enc.hpp"
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/irods/private/amqp_sender.hpp"
   )
 target_sources(${PLUGIN} PRIVATE ${${PLUGIN}_HEADERS})
 target_compile_options(${PLUGIN} PRIVATE -Wno-write-strings)
@@ -79,7 +74,7 @@ target_link_libraries(
   irods_server
   irods_common
   nlohmann_json::nlohmann_json
-  ${IRODS_EXTERNALS_FULLPATH_QPID_PROTON}/lib/libqpid-proton-cpp.so
+  rdkafka.so
   ${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_system.so
   ${CMAKE_DL_LIBS}
   )
@@ -96,23 +91,13 @@ endif()
 install(TARGETS ${PLUGIN} LIBRARY DESTINATION ${IRODS_PLUGINS_DIRECTORY}/rule_engines)
 
 install(
-  FILES
-  ${CMAKE_SOURCE_DIR}/packaging/test_audit_plugin.py
-  ${CMAKE_SOURCE_DIR}/packaging/audit_plugin_message_worker.py
-  ${CMAKE_SOURCE_DIR}/packaging/message_broker_consumer.py
-  ${CMAKE_SOURCE_DIR}/packaging/queue_listener.py
-  DESTINATION ${IRODS_HOME_DIRECTORY}/scripts/irods/test
-  PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
-  )
-
-install(
   FILES ${CMAKE_SOURCE_DIR}/scripts/add_audit_rule_engine_to_rule_engines.py
   DESTINATION ${IRODS_HOME_DIRECTORY}/scripts
   )
 
 add_subdirectory(unit_tests)
 
-set(PLUGIN_PACKAGE_NAME irods-rule-engine-plugin-audit-amqp)
+set(PLUGIN_PACKAGE_NAME irods-rule-engine-plugin-audit-kafka)
 
 include(IrodsCPackCommon)
 

@@ -1,7 +1,7 @@
 #ifndef IRODS_AUDIT_AMQP_B64ENC_HPP
 #define IRODS_AUDIT_AMQP_B64ENC_HPP
 
-#include "irods/private/audit_amqp.hpp"
+#include "irods/private/audit_kafka.hpp"
 
 #include <string>
 
@@ -11,7 +11,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace irods::plugin::rule_engine::audit_amqp
+namespace irods::plugin::rule_engine::audit_kafka
 {
 	static BOOST_FORCEINLINE void insert_as_string_or_base64(
 		nlohmann::json& json_obj,
@@ -46,6 +46,6 @@ namespace irods::plugin::rule_engine::audit_amqp
 			// clang-format on
 		}
 	}
-} //namespace irods::plugin::rule_engine::audit_amqp
+} //namespace irods::plugin::rule_engine::audit_kafka
 
 #endif // IRODS_AUDIT_AMQP_B64ENC_HPP

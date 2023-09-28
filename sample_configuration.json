@@ -1,11 +1,11 @@
 "rule_engines": [
     {
-        "instance_name": "irods_rule_engine_plugin-audit_amqp-instance",
-        "plugin_name": "irods_rule_engine_plugin-audit_amqp",
+        "instance_name": "irods_rule_engine_plugin-audit_kafka-instance",
+        "plugin_name": "irods_rule_engine_plugin-audit_kafka",
         "plugin_specific_configuration" : {
             "pep_regex_to_match" : "audit_.*",
-            "amqp_topic" : "amq.topic",
-            "amqp_location" : "localhost:5672",
+            "kafka_topic" : "amq.topic",
+            "kafka_brokers" : "localhost:9092",
         }
     }
 ]

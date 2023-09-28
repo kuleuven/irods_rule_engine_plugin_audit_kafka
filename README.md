@@ -15,7 +15,7 @@ export PATH=/opt/irods-externals/cmake3.21.4-0/bin:$PATH
 ```
 
 ```
-cd irods_rule_engine_plugin_audit_amqp
+cd irods_rule_engine_plugin_audit_kafka
 mkdir build
 cd build
 cmake ../
@@ -26,7 +26,7 @@ make package
 
 The packages produced by CMake will install the Audit plugin shared object file:
 
-`/usr/lib/irods/plugins/rule_engines/libirods_rule_engine_plugin-audit_amqp.so`
+`/usr/lib/irods/plugins/rule_engines/libirods_rule_engine_plugin-audit_kafka.so`
 
 # Configuration
 
@@ -36,11 +36,11 @@ Add a new stanza to the "rule_engines" array within `server_config.json`:
 
 ```json
             {
-                "instance_name": "irods_rule_engine_plugin-audit_amqp-instance",
-                "plugin_name": "irods_rule_engine_plugin-audit_amqp",
+                "instance_name": "irods_rule_engine_plugin-audit_kafka-instance",
+                "plugin_name": "irods_rule_engine_plugin-audit_kafka",
                 "plugin_specific_configuration" : {
-                     "amqp_location" : "ANONYMOUS@localhost:5672",
-                     "amqp_topic" : "audit_messages",
+                     "kafka_brokers" : "localhost:9092",
+                     "kafka_topic" : "audit_messages",
                      "pep_regex_to_match" : "audit_.*"
                  }
             },
@@ -54,11 +54,3 @@ Add the new `audit_` namespace to the "rule_engine_namespaces" array within `ser
         "audit_"
     ], 
 ```
-
-Further information on this plugin is described in the slide deck available here: http://slides.com/irods/ugm2016-auditing-rule-engine-amqp
-
-Citations:
-
-Hao Xu, Jason Coposky, Ben Keller, Terrell Russell (2015) Pluggable Rule Engine Architecture. 7th iRODS User Group Meeting, University of North Carolina at Chapel Hill. June 2015. ([PDF](https://irods.org/uploads/2015/01/xu2015-pluggable_rule_engine.pdf))
-
-Hao Xu, Jason Coposky, Dan Bedard, Jewel H. Ward, Terrell Russell, Arcot Rajasekar, Reagan Moore, Ben Keller, Zoey Greer (2015) A Method for the Systematic Generation of Audit Logs in a Digital Preservation Environment and Its Experimental Implementation In a Production Ready System. 12th International Conference on Digital Preservation, University of North Carolina at Chapel Hill. November 2-6, 2015. ([PDF](https://irods.org/uploads/2015/01/xu2015_ipres-preservation_audit_logs_production.pdf)) ([direct link](https://phaidra.univie.ac.at/detail_object/o:429566)) 

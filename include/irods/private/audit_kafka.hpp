@@ -8,9 +8,9 @@
 
 #include <boost/config.hpp>
 
-namespace irods::plugin::rule_engine::audit_amqp
+namespace irods::plugin::rule_engine::audit_kafka
 {
-	static inline constexpr const char* const rule_engine_name = "audit_amqp";
+	static inline constexpr const char* const rule_engine_name = "audit_kafka";
 
 	using log_re = irods::experimental::log::rule_engine;
 
@@ -38,6 +38,6 @@ namespace irods::plugin::rule_engine::audit_amqp
 		});
 		// clang-format on
 	}
-} //namespace irods::plugin::rule_engine::audit_amqp
+} //namespace irods::plugin::rule_engine::audit_kafka
 
 #endif // IRODS_AUDIT_AMQP_MAIN_HPP

@@ -1,17 +1,10 @@
 // irods includes
-#include "irods/private/audit_amqp.hpp"
+#include "irods/private/audit_kafka.hpp"
 #include "irods/private/audit_b64enc.hpp"
-#include "irods/private/amqp_sender.hpp"
 #include <irods/irods_logger.hpp>
 #include <irods/irods_re_plugin.hpp>
 #include <irods/irods_re_serialization.hpp>
 #include <irods/irods_server_properties.hpp>
-
-// LIST is #defined in irods/reconstants.hpp
-// and is an enum entry in proton/type_id.hpp
-#ifdef LIST
-#  undef LIST
-#endif
 
 // boost includes
 #include <boost/any.hpp>
@@ -21,18 +14,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
-
-// proton-cpp includes
-#include <proton/connection.hpp>
-#include <proton/connection_options.hpp>
-#include <proton/container.hpp>
-#include <proton/message.hpp>
-#include <proton/messaging_handler.hpp>
-#include <proton/timestamp.hpp>
-#include <proton/tracker.hpp>
-#include <proton/transport.hpp>
-#include <proton/sender.hpp>
-#include <proton/session.hpp>
 
 // misc includes
 #include <nlohmann/json.hpp>
@@ -48,22 +29,13 @@
 #include <string_view>
 #include <chrono>
 #include <map>
-#include <fstream>
 #include <mutex>
 #include <regex>
 
-// filesystem
-// clang-format off
-#ifdef __cpp_lib_filesystem
-#include <filesystem>
-namespace fs = std::filesystem;
-#else
-#include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
-#endif
-// clang-format on
+// kafka includes
+#include <librdkafka/rdkafka.h>
 
-namespace irods::plugin::rule_engine::audit_amqp
+namespace irods::plugin::rule_engine::audit_kafka
 {
 	namespace
 	{
@@ -71,25 +43,18 @@ namespace irods::plugin::rule_engine::audit_amqp
 
 		// NOLINTBEGIN(cert-err58-cpp, cppcoreguidelines-avoid-non-const-global-variables)
 		const std::string_view default_pep_regex_to_match{"audit_.*"};
-		const std::string_view default_amqp_url{"localhost:5672/irods_audit_messages"};
-
-		const fs::path default_log_path_prefix{fs::temp_directory_path()};
-		const bool default_test_mode = false;
+		const std::string_view default_kafka_brokers{"localhost:9092"};
+		const std::string_view default_kafka_topic{"irods_audit_messages"};
 
 		std::string audit_pep_regex_to_match;
-		std::string audit_amqp_url;
-
-		fs::path log_path_prefix;
-		bool test_mode;
-
-		bool warned_amqp_options = false;
-
-		fs::path log_file_path;
-		std::ofstream log_file_ofstream;
+		std::string audit_kafka_brokers;
+		std::string audit_kafka_topic;
 
 		// audit_pep_regex is initially populated with an unoptimized default, as optimization
 		// makes construction slower, and we don't expect it to be used before configuration is read.
 		std::regex audit_pep_regex{audit_pep_regex_to_match, pep_regex_flavor};
+
+        rd_kafka_t *rk;        /* Producer instance handle */
 
 		std::mutex audit_plugin_mutex;
 		// NOLINTEND(cert-err58-cpp, cppcoreguidelines-avoid-non-const-global-variables)
@@ -98,9 +63,8 @@ namespace irods::plugin::rule_engine::audit_amqp
 	static BOOST_FORCEINLINE void set_default_configs()
 	{
 		audit_pep_regex_to_match = default_pep_regex_to_match;
-		audit_amqp_url = default_amqp_url;
-		test_mode = default_test_mode;
-		log_path_prefix = default_log_path_prefix;
+		audit_kafka_brokers = default_kafka_brokers;
+		audit_kafka_topic = default_kafka_topic;
 
 		audit_pep_regex = std::regex(audit_pep_regex_to_match, pep_regex_flavor | std::regex::optimize);
 	}
@@ -133,42 +97,8 @@ namespace irods::plugin::rule_engine::audit_amqp
 
 				audit_pep_regex_to_match = plugin_spec_cfg.at("pep_regex_to_match").get<std::string>();
 
-				const auto& amqp_topic = plugin_spec_cfg.at("amqp_topic").get_ref<const std::string&>();
-				const auto& amqp_location = plugin_spec_cfg.at("amqp_location").get_ref<const std::string&>();
-				audit_amqp_url = fmt::format(FMT_STRING("{0:s}/{1:s}"), amqp_location, amqp_topic);
-
-				// test_mode is optional
-				const auto test_mode_cfg = plugin_spec_cfg.find("test_mode");
-				if (test_mode_cfg == plugin_spec_cfg.end()) {
-					test_mode = default_test_mode;
-				}
-				else {
-					const auto& test_mode_str = test_mode_cfg->get_ref<const std::string&>();
-					test_mode = boost::iequals(test_mode_str, "true");
-				}
-
-				// log_path_prefix is optional
-				const auto log_path_prefix_cfg = plugin_spec_cfg.find("log_path_prefix");
-				if (log_path_prefix_cfg == plugin_spec_cfg.end()) {
-					log_path_prefix = default_log_path_prefix;
-				}
-				else {
-					log_path_prefix = log_path_prefix_cfg->get<std::string>();
-				}
-
-				// look for amqp_options and log a warning if it is present
-				const auto amqp_options_cfg = plugin_spec_cfg.find("amqp_options");
-				if (amqp_options_cfg != plugin_spec_cfg.end() && !warned_amqp_options) {
-					// clang-format off
-					log_re::warn({
-						{"rule_engine_plugin", rule_engine_name},
-						{"log_message", "Found amqp_options configuration setting. This setting is no longer used and "
-						                "should be removed from the plugin configuration."},
-						{"instance_name", _instance_name},
-					});
-					// clang-format on
-					warned_amqp_options = true;
-				}
+				audit_kafka_topic = plugin_spec_cfg.at("kafka_topic").get_ref<const std::string&>();
+				audit_kafka_brokers = plugin_spec_cfg.at("kafka_brokers").get_ref<const std::string&>();
 
 				audit_pep_regex = std::regex(audit_pep_regex_to_match, pep_regex_flavor | std::regex::optimize);
 
@@ -208,56 +138,21 @@ namespace irods::plugin::rule_engine::audit_amqp
 			// clang-format on
 		}
 
-		nlohmann::json json_obj;
+        rd_kafka_conf_t *conf; /* Temporary configuration object */
+        char errstr[512];      /* librdkafka API error reporting buffer */
 
-		std::string msg_str;
+        conf = rd_kafka_conf_new();
 
-		try {
-			std::uint64_t time_ms = ts_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
-			json_obj["@timestamp"] = time_ms;
-			json_obj["hostname"] = boost::asio::ip::host_name();
+        if (rd_kafka_conf_set(conf, "bootstrap.servers", audit_kafka_brokers.c_str(), errstr,
+                    sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+			return ERROR(SYS_INTERNAL_ERR, errstr);
+        }
 
-			pid_t pid = getpid();
-			json_obj["pid"] = pid;
-
-			json_obj["action"] = "START";
-
-			if (test_mode) {
-				log_file_path = log_path_prefix / fmt::format(FMT_STRING("{0:08d}.txt"), pid);
-				json_obj["log_file"] = log_file_path;
-			}
-
-			msg_str = json_obj.dump();
-
-			proton::message msg(msg_str);
-			msg.content_type("application/json");
-			msg.creation_time(proton::timestamp(static_cast<proton::timestamp::numeric_type>(time_ms)));
-			send_handler handler(msg, audit_amqp_url);
-			proton::container(handler).run();
-		}
-		catch (const irods::exception& e) {
-			log_exception(e, "Caught iRODS exception", {"instance_name", _instance_name});
-			return ERROR(e.code(), e.what());
-		}
-		catch (const nlohmann::json::exception& e) {
-			log_exception(e, "Caught nlohmann-json exception", {"instance_name", _instance_name});
-			return ERROR(SYS_LIBRARY_ERROR, e.what());
-		}
-		catch (const std::exception& e) {
-			log_exception(e, "Caught exception", {"instance_name", _instance_name});
-			return ERROR(SYS_INTERNAL_ERR, e.what());
-		}
-		catch (...) {
-			return ERROR(SYS_UNKNOWN_ERROR, "an unknown error occurred");
-		}
-
-		if (test_mode) {
-			if (!log_file_ofstream.is_open()) {
-				log_file_ofstream.open(log_file_path);
-			}
-			log_file_ofstream << msg_str << std::endl;
-		}
-
+        rk = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
+        if (!rk) {
+			return ERROR(SYS_INTERNAL_ERR, errstr);
+        }
+		
 		return SUCCESS();
 	}
 
@@ -265,56 +160,23 @@ namespace irods::plugin::rule_engine::audit_amqp
 	{
 		std::lock_guard<std::mutex> lock(audit_plugin_mutex);
 
-		nlohmann::json json_obj;
+        rd_kafka_flush(rk, 10 * 1000 /* wait for max 10 seconds */);
 
-		std::string msg_str;
-		std::string log_file;
+        /* If the output queue is still not empty there is an issue
+         * with producing messages to the clusters. */
+        if (rd_kafka_outq_len(rk) > 0) {
+			// clang-format off
+            log_re::error({
+						{"rule_engine_plugin", rule_engine_name},
+						{"log_message", "failed to flush messages kafka topic"},
+					});
+			// clang-format on
+        }
 
-		try {
-			std::uint64_t time_ms = ts_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
-			json_obj["@timestamp"] = time_ms;
+        /* Destroy the producer instance */
+        rd_kafka_destroy(rk);
 
-			json_obj["hostname"] = boost::asio::ip::host_name();
-			json_obj["pid"] = getpid();
-			json_obj["action"] = "STOP";
-
-			if (test_mode) {
-				json_obj["log_file"] = log_file_path;
-			}
-
-			msg_str = json_obj.dump();
-
-			proton::message msg(msg_str);
-			msg.content_type("application/json");
-			msg.creation_time(proton::timestamp(static_cast<proton::timestamp::numeric_type>(time_ms)));
-			send_handler handler(msg, audit_amqp_url);
-			proton::container(handler).run();
-		}
-		catch (const irods::exception& e) {
-			log_exception(e, "Caught iRODS exception", {"instance_name", _instance_name});
-			return ERROR(e.code(), e.what());
-		}
-		catch (const nlohmann::json::exception& e) {
-			log_exception(e, "Caught nlohmann-json exception", {"instance_name", _instance_name});
-			return ERROR(SYS_LIBRARY_ERROR, e.what());
-		}
-		catch (const std::exception& e) {
-			log_exception(e, "Caught exception", {"instance_name", _instance_name});
-			return ERROR(SYS_INTERNAL_ERR, e.what());
-		}
-		catch (...) {
-			return ERROR(SYS_UNKNOWN_ERROR, "an unknown error occurred");
-		}
-
-		if (test_mode) {
-			if (!log_file_ofstream.is_open()) {
-				log_file_ofstream.open(log_file_path);
-			}
-			log_file_ofstream << msg_str << std::endl;
-			log_file_ofstream.close();
-		}
-
-		return SUCCESS();
+        return SUCCESS();
 	}
 
 	static auto rule_exists([[maybe_unused]] irods::default_re_ctx& _re_ctx, const std::string& _rn, bool& _ret)
@@ -361,7 +223,6 @@ namespace irods::plugin::rule_engine::audit_amqp
 		nlohmann::json json_obj;
 
 		std::string msg_str;
-		std::string log_file;
 
 		try {
 			std::uint64_t time_ms = ts_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
@@ -425,12 +286,45 @@ namespace irods::plugin::rule_engine::audit_amqp
 			}
 
 			msg_str = json_obj.dump();
+            char * c = msg_str.data();
 
-			proton::message msg(msg_str);
-			msg.content_type("application/json");
-			msg.creation_time(proton::timestamp(static_cast<proton::timestamp::numeric_type>(time_ms)));
-			send_handler handler(msg, audit_amqp_url);
-			proton::container(handler).run();
+            size_t len = strlen(c);
+            rd_kafka_resp_err_t err;
+
+            retry:
+            err = rd_kafka_producev(
+                    /* Producer handle */
+                    rk,
+                    /* Topic name */
+                    RD_KAFKA_V_TOPIC(audit_kafka_topic.c_str()),
+                    /* Make a copy of the payload. */
+                    RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                    /* Message value and length */
+                    RD_KAFKA_V_VALUE(c, len),
+                    /* Per-Message opaque, provided in
+                     *                      * delivery report callback as
+                     *                                           * msg_opaque. */
+                    RD_KAFKA_V_OPAQUE(NULL),
+                    /* End sentinel */
+                    RD_KAFKA_V_END);
+        
+            if (err) {
+                log_re::error({
+						{"rule_engine_plugin", rule_engine_name},
+						{"log_message", "failed to produce to kafka topic"},
+						{"rule_name", _rn},
+                        {"kafka_topic", audit_kafka_topic},
+						{"kafka_error", rd_kafka_err2str(err)},
+					});
+
+                if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
+                    rd_kafka_poll(rk,
+                            1000 /*block for max 1000ms*/);
+                    goto retry;
+                }
+            }
+
+            rd_kafka_poll(rk, 0 /*non-blocking*/);
 		}
 		catch (const irods::exception& e) {
 			log_exception(e, "Caught iRODS exception", {"rule_name", _rn});
@@ -448,16 +342,9 @@ namespace irods::plugin::rule_engine::audit_amqp
 			return ERROR(SYS_UNKNOWN_ERROR, "an unknown error occurred");
 		}
 
-		if (test_mode) {
-			if (!log_file_ofstream.is_open()) {
-				log_file_ofstream.open(log_file_path);
-			}
-			log_file_ofstream << msg_str << std::endl;
-		}
-
 		return err;
 	}
-} // namespace irods::plugin::rule_engine::audit_amqp
+} // namespace irods::plugin::rule_engine::audit_kafka
 
 //
 // Plugin Factory
@@ -467,7 +354,7 @@ using pluggable_rule_engine = irods::pluggable_rule_engine<irods::default_re_ctx
 
 extern "C" auto plugin_factory(const std::string& _inst_name, const std::string& _context) -> pluggable_rule_engine*
 {
-	using namespace irods::plugin::rule_engine::audit_amqp;
+	using namespace irods::plugin::rule_engine::audit_kafka;
 
 	set_default_configs();
 
