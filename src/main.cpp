@@ -256,6 +256,7 @@ namespace irods::plugin::rule_engine::audit_kafka
 			std::uint64_t time_ms = ts_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
 			json_obj["@timestamp"] = time_ms;
 			json_obj["hostname"] = boost::asio::ip::host_name();
+			json_obj["zone"] = rei.rsComm->myEnv.rodsZone;
 			json_obj["pid"] = getpid();
 			json_obj["rule_name"] = _rn;
 
