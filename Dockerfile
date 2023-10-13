@@ -10,7 +10,7 @@ RUN yum install -y wget vim jq rpmdevtools rpmrebuild make
 
 RUN rpm --import https://packages.irods.org/irods-signing-key.asc && \
     curl -o /etc/yum.repos.d/renci-irods.yum.repo https://packages.irods.org/renci-irods.yum.repo &&\
-    yum install -y irods-devel-4.3.0 irods-externals-\* gcc-c++ gdb openssl-devel
+    yum install -y irods-devel-${IRODS_VERSION} irods-externals-\* gcc-c++ gdb openssl-devel
 
 RUN yum install -y epel-release
 RUN yum install -y curl libcurl-devel curl-devel openssl-devel
