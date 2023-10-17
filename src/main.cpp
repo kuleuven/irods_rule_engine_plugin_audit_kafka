@@ -252,6 +252,20 @@ namespace irods::plugin::rule_engine::audit_kafka
 
 		std::string msg_str;
 
+		std::vector<std::string> includeBytesBufPeps = {
+			"pep_api_atomic_apply_metadata_operations_pre",
+			"pep_api_atomic_apply_acl_operations_pre",
+			"pep_api_touch_pre",
+			"pep_api_atomic_apply_metadata_operations_post",
+			"pep_api_atomic_apply_acl_operations_post",
+			"pep_api_touch_post",
+			"pep_api_atomic_apply_metadata_operations_finally",
+			"pep_api_atomic_apply_acl_operations_finally",
+			"pep_api_touch_finally"
+		};
+
+		bool includeBytesBuf = (std::find(includeBytesBufPeps.begin(), includeBytesBufPeps.end(), _rn) != includeBytesBufPeps.end());
+
 		try {
 			std::uint64_t time_ms = ts_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
 			json_obj["@timestamp"] = time_ms;
@@ -264,7 +278,7 @@ namespace irods::plugin::rule_engine::audit_kafka
 				// The BytesBuf parameter should not be serialized because this commonly contains
 				// the entirety of the contents of files. These could be very big and cause the
 				// message broker to explode.
-				if (std::type_index(typeid(BytesBuf*)) == std::type_index(itr.type())) {
+				if (std::type_index(typeid(BytesBuf*)) == std::type_index(itr.type()) && !includeBytesBuf) {
 					// clang-format off
 					log_re::trace({
 						{"rule_engine_plugin", rule_engine_name},
