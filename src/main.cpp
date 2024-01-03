@@ -267,12 +267,17 @@ namespace irods::plugin::rule_engine::audit_kafka
 		bool includeBytesBuf = (std::find(includeBytesBufPeps.begin(), includeBytesBufPeps.end(), _rn) != includeBytesBufPeps.end());
 
 		try {
+			int pid = getpid();
+
 			std::uint64_t time_ms = ts_clock::now().time_since_epoch() / std::chrono::milliseconds(1);
 			json_obj["@timestamp"] = time_ms;
 			json_obj["@hostname"] = boost::asio::ip::host_name();
 			json_obj["@zone"] = rei->rsComm->myEnv.rodsZone;
-			json_obj["@pid"] = getpid();
+			json_obj["@pid"] = pid;
 			json_obj["@rule_name"] = _rn;
+
+			char * mykey = malloc(6);
+			sprintf(mykey, "%d", pid);
 
 			for (const auto& itr : _ps) {
 				// The BytesBuf parameter should not be serialized because this commonly contains
@@ -344,6 +349,8 @@ namespace irods::plugin::rule_engine::audit_kafka
                     RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
                     /* Message value and length */
                     RD_KAFKA_V_VALUE(c, len),
+					/* Message key and length */
+					RD_KAFKA_V_KEY(mykey, sizeof(mykey)),
                     /* Per-Message opaque, provided in
                      *                      * delivery report callback as
                      *                                           * msg_opaque. */
