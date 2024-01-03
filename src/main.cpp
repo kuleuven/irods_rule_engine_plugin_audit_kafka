@@ -276,7 +276,7 @@ namespace irods::plugin::rule_engine::audit_kafka
 			json_obj["@pid"] = pid;
 			json_obj["@rule_name"] = _rn;
 
-			char * mykey = malloc(6);
+			char * mykey = new char[6];
 			sprintf(mykey, "%d", pid);
 
 			for (const auto& itr : _ps) {
