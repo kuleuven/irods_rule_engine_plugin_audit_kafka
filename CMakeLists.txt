@@ -1,14 +1,15 @@
-cmake_minimum_required(VERSION 3.5.0 FATAL_ERROR) #CPACK_DEBIAN_<COMPONENT>_PACKAGE_NAME
+cmake_minimum_required(VERSION 3.19.0 FATAL_ERROR) #CPACK_DEBIAN_<COMPONENT>_PACKAGE_NAME
 
 # Ensure try_compile() uses project settings
 cmake_policy(SET CMP0066 NEW)
 cmake_policy(SET CMP0067 NEW)
 
-find_package(IRODS REQUIRED)
-set(IRODS_PLUGIN_REVISION "1")
+set(IRODS_MINIMUM_VERSION "4.3.2")
+find_package(IRODS ${IRODS_MINIMUM_VERSION}...<4.4.0 REQUIRED)
+set(IRODS_PLUGIN_REVISION "0")
 set(IRODS_PLUGIN_VERSION "${IRODS_VERSION}.${IRODS_PLUGIN_REVISION}")
 
-set(IRODS_PACKAGE_REVISION "1")
+set(IRODS_PACKAGE_REVISION "0")
 
 set(PLUGIN irods_rule_engine_plugin-audit_kafka)
 
@@ -18,6 +19,7 @@ set(CMAKE_MODULE_LINKER_FLAGS_INIT "-Wl,--enable-new-dtags -Wl,--as-needed -Wl,-
 set(CMAKE_SHARED_LINKER_FLAGS_INIT "-Wl,--enable-new-dtags -Wl,--as-needed -Wl,-z,defs")
 set(CMAKE_MODULE_LINKER_FLAGS_RELEASE_INIT "-Wl,--gc-sections -Wl,-z,combreloc")
 set(CMAKE_SHARED_LINKER_FLAGS_RELEASE_INIT "-Wl,--gc-sections -Wl,-z,combreloc")
+include(IrodsRunpathDefaults)
 
 include(IrodsExternals)
 
@@ -42,6 +44,8 @@ include(CheckCXXSymbolExists)
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED COMPONENTS Crypto SSL)
 find_package(nlohmann_json "3.10.4" REQUIRED)
+find_package(fmt "8.1.1"
+  HINTS "${IRODS_EXTERNALS_FULLPATH_FMT}")
 
 add_library(
   ${PLUGIN}
@@ -63,9 +67,6 @@ target_include_directories(
   ${IRODS_INCLUDE_DIRS}
   ${IRODS_EXTERNALS_FULLPATH_ARCHIVE}/include
   ${IRODS_EXTERNALS_FULLPATH_BOOST}/include
-  ${IRODS_EXTERNALS_FULLPATH_FMT}/include
-  ${IRODS_EXTERNALS_FULLPATH_SPDLOG}/include
-  ${IRODS_EXTERNALS_FULLPATH_QPID_PROTON}/include
   )
 
 target_link_libraries(
