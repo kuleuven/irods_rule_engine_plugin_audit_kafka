@@ -1,6 +1,6 @@
 FROM almalinux:8
 
-ENV IRODS_VERSION=4.3.1
+ENV IRODS_VERSION=4.3.2
 
 ARG RELEASE
 
@@ -25,7 +25,7 @@ WORKDIR /work
 #RUN mkdir build && cd build && \
 #    /opt/irods-externals/cmake3.11.4-0/bin/cmake -DIRODS_ENABLE_SYSLOG=1 .. && make package
 RUN mkdir build && cd build && \
-    /opt/irods-externals/cmake3.21.4-0/bin/cmake -DIRODS_ENABLE_SYSLOG=1 .. && make package
+    /opt/irods-externals/cmake3.21.4-0/bin/cmake .. && make package
 
 RUN mkdir -p /output/rpms
 
