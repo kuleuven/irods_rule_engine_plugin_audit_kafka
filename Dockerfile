@@ -1,20 +1,15 @@
-FROM almalinux:8
+FROM registry.icts.kuleuven.be/icts/icts-centos9:latest AS base
 
-ENV IRODS_VERSION=4.3.2
+ARG MAIN_BUILD
+ARG REVISION
 
-ARG RELEASE
+RUN echo -e "[irods]\nname=irods\nbaseurl=https://repo.icts.kuleuven.be/artifactory/irods-builds/${MAIN_BUILD}\nenabled=1\ngpgcheck=0" > /etc/yum.repos.d/irods.repo
 
-RUN yum install -y epel-release python3 python3-distro
-
-RUN yum install -y wget vim jq rpmdevtools rpmrebuild make
-
-RUN rpm --import https://packages.irods.org/irods-signing-key.asc && \
-    curl -o /etc/yum.repos.d/renci-irods.yum.repo https://packages.irods.org/renci-irods.yum.repo &&\
-    yum install -y irods-devel-${IRODS_VERSION} irods-externals-\* gcc-c++ gdb openssl-devel
-
-RUN yum install -y epel-release
-RUN yum install -y curl libcurl-devel curl-devel openssl-devel
-RUN yum install -y --enablerepo powertools librdkafka-devel
+RUN dnf install -y epel-release python3 python3-distro
+RUN dnf install -y wget vim jq rpmdevtools rpmrebuild make
+RUN dnf install -y irods-devel irods-externals-\* gcc-c++ gdb openssl-devel
+RUN dnf install -y --disablerepo=* --enablerepo=baseos,appstream,extras curl-devel
+RUN yum install -y --enablerepo crb librdkafka-devel
 
 RUN mkdir /work
 
@@ -22,13 +17,12 @@ COPY . /work
 
 WORKDIR /work
 
-#RUN mkdir build && cd build && \
-#    /opt/irods-externals/cmake3.11.4-0/bin/cmake -DIRODS_ENABLE_SYSLOG=1 .. && make package
+RUN sed -i 's/set(IRODS_PLUGIN_REVISION "0")/set(IRODS_PLUGIN_REVISION "'$REVISION'")/' CMakeLists.txt
+RUN sed -i 's/set(IRODS_PACKAGE_REVISION "0")/set(IRODS_PACKAGE_REVISION "'$MAIN_BUILD'")/' CMakeLists.txt
+
 RUN mkdir build && cd build && \
     /opt/irods-externals/cmake3.21.4-0/bin/cmake .. && make package
 
 RUN mkdir -p /output/rpms
 
-#RUN cp /work/build/*.rpm /output/rpms
-RUN rpmrebuild -p --release=${RELEASE} --directory /output/rpms /work/build/*.rpm
-#RUN rpmrebuild -p --change-spec-preamble="sed -e 's/^Version:.*/Version: ${IRODS_VERSION}/'" --release=${RELEASE} --directory /output/rpms /work/build/*.rpm
+RUN rpmrebuild -p --directory /output/rpms /work/build/*.rpm
