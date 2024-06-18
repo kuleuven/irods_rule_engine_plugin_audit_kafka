@@ -54,9 +54,12 @@ namespace irods::plugin::rule_engine::audit_kafka
 		// makes construction slower, and we don't expect it to be used before configuration is read.
 		std::regex audit_pep_regex{audit_pep_regex_to_match, pep_regex_flavor};
 
-        rd_kafka_t *rk;        /* Producer instance handle */
+		rd_kafka_conf_t *conf; /* Temporary configuration object */
+		rd_kafka_t *rk;		/* Producer instance handle */
 
 		std::mutex audit_plugin_mutex;
+
+		bool initialized;
 		// NOLINTEND(cert-err58-cpp, cppcoreguidelines-avoid-non-const-global-variables)
 	} // namespace
 
@@ -164,23 +167,17 @@ namespace irods::plugin::rule_engine::audit_kafka
 			// clang-format on
 		}
 
-        rd_kafka_conf_t *conf; /* Temporary configuration object */
-        char errstr[512];      /* librdkafka API error reporting buffer */
+		char errstr[512];	  /* librdkafka API error reporting buffer */
 
-        conf = rd_kafka_conf_new();
+		conf = rd_kafka_conf_new();
 
-        if (rd_kafka_conf_set(conf, "bootstrap.servers", audit_kafka_brokers.c_str(), errstr,
-                    sizeof(errstr)) != RD_KAFKA_CONF_OK) {
+		if (rd_kafka_conf_set(conf, "bootstrap.servers", audit_kafka_brokers.c_str(), errstr,
+					sizeof(errstr)) != RD_KAFKA_CONF_OK) {
 			return ERROR(SYS_INTERNAL_ERR, errstr);
-        }
+		}
 
 		rd_kafka_conf_set_dr_msg_cb(conf, dr_msg_cb);
 
-        rk = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
-        if (!rk) {
-			return ERROR(SYS_INTERNAL_ERR, errstr);
-        }
-		
 		return SUCCESS();
 	}
 
@@ -188,23 +185,27 @@ namespace irods::plugin::rule_engine::audit_kafka
 	{
 		std::lock_guard<std::mutex> lock(audit_plugin_mutex);
 
-        rd_kafka_flush(rk, 10 * 1000 /* wait for max 10 seconds */);
+		if (!initialized) {
+			return SUCCESS();
+		}
 
-        /* If the output queue is still not empty there is an issue
-         * with producing messages to the clusters. */
-        if (rd_kafka_outq_len(rk) > 0) {
+		rd_kafka_flush(rk, 10 * 1000 /* wait for max 10 seconds */);
+
+		/* If the output queue is still not empty there is an issue
+		 * with producing messages to the clusters. */
+		if (rd_kafka_outq_len(rk) > 0) {
 			// clang-format off
-            log_re::error({
+			log_re::error({
 						{"rule_engine_plugin", rule_engine_name},
 						{"log_message", "failed to flush messages kafka topic"},
 					});
 			// clang-format on
-        }
+		}
 
-        /* Destroy the producer instance */
-        rd_kafka_destroy(rk);
+		/* Destroy the producer instance */
+		rd_kafka_destroy(rk);
 
-        return SUCCESS();
+		return SUCCESS();
 	}
 
 	static auto rule_exists([[maybe_unused]] irods::default_re_ctx& _re_ctx, const std::string& _rn, bool& _ret)
@@ -238,6 +239,17 @@ namespace irods::plugin::rule_engine::audit_kafka
 		irods::callback _eff_hdlr) -> irods::error
 	{
 		std::lock_guard<std::mutex> lock(audit_plugin_mutex);
+
+		if (!initialized) {
+			char errstr[512];	  /* librdkafka API error reporting buffer */
+
+			rk = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
+			if (!rk) {
+				return ERROR(SYS_INTERNAL_ERR, errstr);
+			}
+
+			initialized = true;
+		}
 
 		// stores a counter of unique arg types
 		std::map<std::string, std::size_t> arg_type_map;
@@ -334,47 +346,47 @@ namespace irods::plugin::rule_engine::audit_kafka
 			}
 
 			msg_str = json_obj.dump();
-            char * c = msg_str.data();
+			char * c = msg_str.data();
 
-            size_t len = strlen(c);
-            rd_kafka_resp_err_t err;
+			size_t len = strlen(c);
+			rd_kafka_resp_err_t err;
 
-            retry:
-            err = rd_kafka_producev(
-                    /* Producer handle */
-                    rk,
-                    /* Topic name */
-                    RD_KAFKA_V_TOPIC(audit_kafka_topic.c_str()),
-                    /* Make a copy of the payload. */
-                    RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                    /* Message value and length */
-                    RD_KAFKA_V_VALUE(c, len),
+			retry:
+			err = rd_kafka_producev(
+					/* Producer handle */
+					rk,
+					/* Topic name */
+					RD_KAFKA_V_TOPIC(audit_kafka_topic.c_str()),
+					/* Make a copy of the payload. */
+					RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+					/* Message value and length */
+					RD_KAFKA_V_VALUE(c, len),
 					/* Message key and length */
 					RD_KAFKA_V_KEY(mykey, sizeof(mykey)),
-                    /* Per-Message opaque, provided in
-                     *                      * delivery report callback as
-                     *                                           * msg_opaque. */
-                    RD_KAFKA_V_OPAQUE(NULL),
-                    /* End sentinel */
-                    RD_KAFKA_V_END);
-        
-            if (err) {
-                log_re::error({
+					/* Per-Message opaque, provided in
+					 *					  * delivery report callback as
+					 *										   * msg_opaque. */
+					RD_KAFKA_V_OPAQUE(NULL),
+					/* End sentinel */
+					RD_KAFKA_V_END);
+
+			if (err) {
+				log_re::error({
 						{"rule_engine_plugin", rule_engine_name},
 						{"log_message", "failed to produce to kafka topic"},
 						{"rule_name", _rn},
-                        {"kafka_topic", audit_kafka_topic},
+						{"kafka_topic", audit_kafka_topic},
 						{"kafka_error", rd_kafka_err2str(err)},
-					});
+						});
 
-                if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
-                    rd_kafka_poll(rk,
-                            1000 /*block for max 1000ms*/);
-                    goto retry;
-                }
-            }
+				if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
+					rd_kafka_poll(rk,
+							1000 /*block for max 1000ms*/);
+					goto retry;
+				}
+			}
 
-            rd_kafka_poll(rk, 0 /*non-blocking*/);
+			rd_kafka_poll(rk, 0 /*non-blocking*/);
 		}
 		catch (const irods::exception& e) {
 			log_exception(e, "Caught iRODS exception", {"rule_name", _rn});
